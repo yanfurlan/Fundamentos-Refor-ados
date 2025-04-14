@@ -1,154 +1,233 @@
-# Oracle Exadata para DBAs
-
-![Oracle Exadata](https://www.oracle.com/a/ocom/img/cw35-exadata-cloud-infrastructure.jpg)
-
-## 📘 Visão Geral
-
-O **Oracle Exadata** é uma plataforma de hardware e software desenvolvida especificamente para executar bancos de dados Oracle com o máximo desempenho, escalabilidade e confiabilidade. Projetado para ambientes corporativos críticos, o Exadata combina servidores otimizados, armazenamento inteligente, redes de alta velocidade e software Oracle avançado para oferecer uma experiência de banco de dados inigualável.
-
-Este repositório é voltado para **DBAs (Database Administrators)** que desejam entender, operar, manter e otimizar ambientes Oracle Exadata.
+**Fundamentos Reforçados**
 
 ---
 
-## 📚 Índice
+# 🏦 1. Arquitetura Oracle
 
-1. [Arquitetura do Exadata](#arquitetura-do-exadata)
-2. [Principais Componentes](#principais-componentes)
-3. [Benefícios para DBAs](#benefícios-para-dbas)
-4. [Gerenciamento e Monitoramento](#gerenciamento-e-monitoramento)
-5. [Melhores Práticas](#melhores-práticas)
-6. [Scripts Úteis](#scripts-úteis)
-7. [Troubleshooting](#troubleshooting)
-8. [Backup e Recovery](#backup-e-recovery)
-9. [Segurança e Compliance](#segurança-e-compliance)
-10. [Recursos Complementares](#recursos-complementares)
+## 1.1 Componentes da Arquitetura
+- **SGA (System Global Area)**:
+  - Shared Pool (Library Cache, Data Dictionary Cache)
+  - Database Buffer Cache
+  - Redo Log Buffer
+  - Large Pool
+  - Java Pool
+  - Streams Pool
+- **PGA (Program Global Area)**:
+  - Area privada por processo (Hash Joins, Sorts, Bitmap Merge)
+- **Background Processes**:
+  - **DBWn**: Database Writer
+  - **LGWR**: Log Writer
+  - **CKPT**: Checkpoint
+  - **SMON**: System Monitor
+  - **PMON**: Process Monitor
+  - **RECO**: Recoverer (para Distributed Databases)
+  - **ARCn**: Archiver (modo ARCHIVELOG)
+  - **MMON / MMNL**: Monitoramento automátizado (AWR, ADDM)
 
----
-
-## 🧱 Arquitetura do Exadata
-
-A arquitetura do Oracle Exadata é composta por:
-
-- **Database Servers (Compute Nodes)**: Executam a instância do Oracle Database.
-- **Storage Servers (Exadata Storage Servers)**: Executam o software de armazenamento inteligente.
-- **InfiniBand Network**: Conecta servidores de banco e armazenamento com baixa latência e alta largura de banda.
-- **Software Exadata**: Inclui funcionalidades como Smart Scan, Hybrid Columnar Compression, Storage Indexes, etc.
-
-![Arquitetura](https://docs.oracle.com/en/engineered-systems/exadata-cloud-at-customer/dbecg/img/cloud-infra.png)
-
----
-
-## 🔧 Principais Componentes
-
-| Componente | Descrição |
-|-----------|-----------|
-| **Exadata Storage Server (Cellsrv)** | Oferece funcionalidades como Smart Scan e I/O Resource Management |
-| **CellCLI** | Interface de linha de comando para gerenciamento das células de armazenamento |
-| **DB Server** | Onde as instâncias Oracle rodam |
-| **ASM (Automatic Storage Management)** | Gerencia os discos Exadata |
-| **Grid Infrastructure** | Inclui Oracle Clusterware e ASM para alta disponibilidade |
+## 1.2 Arquivos Essenciais
+- **Datafiles**: Armazenam dados persistentes
+- **Redo Logs**: Garantem integridade das transações
+- **Control Files**: Arquivos de controle com metadados do banco
+- **Parameter Files**:
+  - **SPFILE** (Server Parameter File) - binário
+  - **PFILE** (Parameter File) - texto
 
 ---
 
-## ✅ Benefícios para DBAs
+# ⚖️ 2. Estrutura Lógica e Física
 
-- **Desempenho Elevado** com Smart Scan
-- **Consolidação** de bancos de dados com RAC e Multitenant
-- **Alta Disponibilidade** com RAC + ASM + Disk redundancy
-- **Redução de Tarefas Operacionais** com ferramentas de gerenciamento integradas
-- **Segurança** com TDE (Transparent Data Encryption) e separação de funções
+## 2.1 Estrutura Lógica
+- **Tablespaces**: Lógicas, contêm segmentos
+- **Segments**: Tabelas, índices, undo, etc.
+- **Extents**: Agrupamentos contíguos de blocos
+- **Blocos (DB Blocks)**: Menor unidade de armazenamento (padrão: 8KB)
 
----
+## 2.2 Estrutura Física
+- **Arquivos de Dados** (.dbf)
+- **Arquivos de Redo Log**
+- **Arquivos de Controle**
+- **Arquivos Temporários**
 
-## 📈 Gerenciamento e Monitoramento
-
-Ferramentas comuns para monitoramento e administração:
-
-- **Oracle Enterprise Manager (OEM)**
-- **dcli (Distributed Command Line Interface)**
-- **CellCLI**
-- **Exachk** – Diagnóstico abrangente
-- **OSWatcher** – Coleta de métricas do sistema operacional
-- **AWR/ASH/ADDM**
-
-### Exemplos:
-
-```bash
-# Coletar métricas dos discos Exadata
-CellCLI> list physicaldisk detail
-
-# Exibir métricas de I/O
-CellCLI> list iormplan
-```
+## 2.3 Tipos de Tablespaces
+- **Permanent**: SYSTEM, SYSAUX, USERS
+- **Temporary**: TEMP, TEMPFILE
+- **Undo**: Armazena undo data
+- **Bigfile vs Smallfile**
 
 ---
 
-## 🧠 Melhores Práticas
+# 🔐 3. Gerenciamento de Usuários, Acessos e Segurança
 
-- Use **Smart Scan** sempre que possível (evite funções em WHERE, use diretas por colunas)
-- Particione tabelas e use compressão híbrida
-- Monitore latência e throughput de I/O constantemente
-- Automatize tarefas com `dcli` e `CellCLI`
-- Use `exachk` com frequência
-
----
-
-## 💻 Scripts Úteis
-
+## 3.1 Criação de Usuários
 ```sql
--- Verificar se Smart Scan está sendo utilizado
-SELECT * FROM v$sql_plan_statistics_all
-WHERE operation LIKE '%TABLE ACCESS STORAGE%';
-
--- Identificar sessões usando muito I/O
-SELECT sid, serial#, io.* FROM v$sess_io io JOIN v$session s USING (sid)
-ORDER BY block_changes DESC;
+CREATE USER nome IDENTIFIED BY senha;
+GRANT CONNECT, RESOURCE TO nome;
+ALTER USER nome DEFAULT TABLESPACE users;
 ```
 
-```bash
-# Uso do dcli para listar espaço disponível
-$ dcli -g cell_group -l root "df -h"
+## 3.2 Roles e Privilégios
+- **System Privileges**: CREATE SESSION, CREATE TABLE, etc.
+- **Object Privileges**: SELECT, INSERT, UPDATE, DELETE
+- **Roles Customizadas**:
+```sql
+CREATE ROLE dba_readonly;
+GRANT SELECT ON tabela TO dba_readonly;
+```
+
+## 3.3 Profiles
+- Limita recursos como tempo de CPU, conexões, falhas de login
+- Política de senhas, validade, histórico
+
+## 3.4 Segurança Avançada
+- **Auditoria FGA** (Fine Grained Auditing)
+- **Oracle Label Security**
+- **Transparent Data Encryption (TDE)**
+
+---
+
+# 💾 4. Backup e Recovery com RMAN
+
+## 4.1 Tipos de Backup
+- **Backup Físico** (RMAN)
+- **Backup Lógico** (Data Pump - expdp/impdp)
+- **Hot Backup** (com banco online)
+- **Cold Backup** (banco offline)
+
+## 4.2 Comandos Essenciais
+```sql
+BACKUP DATABASE;
+BACKUP AS COMPRESSED BACKUPSET DATABASE;
+BACKUP INCREMENTAL LEVEL 0 DATABASE;
+RESTORE DATABASE;
+RECOVER DATABASE;
+```
+
+## 4.3 Configuração
+```sql
+CONFIGURE RETENTION POLICY TO REDUNDANCY 2;
+CONFIGURE CONTROLFILE AUTOBACKUP ON;
+CONFIGURE CHANNEL DEVICE TYPE DISK FORMAT '/backup/rman_%U.bkp';
+```
+
+## 4.4 Fast Recovery Area (FRA)
+- Área dedicada para armazenar arquivos de recuperação
+- Local configurado via `DB_RECOVERY_FILE_DEST`
+
+## 4.5 Recovery Catalog
+- Banco separado com metadados históricos de backup RMAN
+- Permite restores mais complexos e histórico de backup
+
+---
+
+# ⏱ 5. Agendamento de Jobs
+
+## 5.1 DBMS_SCHEDULER
+```sql
+BEGIN
+  DBMS_SCHEDULER.CREATE_JOB(
+    job_name => 'job_backup',
+    job_type => 'PLSQL_BLOCK',
+    job_action => 'BEGIN BACKUP DATABASE; END;',
+    start_date => SYSTIMESTAMP,
+    repeat_interval => 'FREQ=DAILY;BYHOUR=2',
+    enabled => TRUE
+  );
+END;
+```
+
+## 5.2 Monitoramento
+```sql
+SELECT * FROM DBA_SCHEDULER_JOBS;
+SELECT * FROM DBA_SCHEDULER_JOB_RUN_DETAILS;
+```
+
+## 5.3 Chains, Events, Programs
+- Composição de tarefas mais complexas (como workflows)
+
+---
+
+# ⚙️ 6. Diagnóstico e Tuning Básico
+
+## 6.1 Views Importantes
+- **V$INSTANCE**
+- **V$DATABASE**
+- **V$SESSION** / **V$PROCESS**
+- **V$SQL**, **V$SQLAREA**, **V$SQL_PLAN**
+- **DBA_HIST_SQLSTAT**, **DBA_HIST_ACTIVE_SESS_HISTORY**
+
+## 6.2 Ferramentas
+- **AWR (Automatic Workload Repository)**
+- **ASH (Active Session History)**
+- **ADDM (Automatic Database Diagnostic Monitor)**
+- **SQL Tuning Advisor** / **SQL Access Advisor**
+
+---
+
+# 📦 7. Exadata Fundamentals
+
+## 7.1 Conceitos
+- **Exadata Storage Server (Cell Server)**
+- **Smart Scan**: Filtragem de dados no storage
+- **Hybrid Columnar Compression (HCC)**
+- **Flash Cache** e **Smart Flash Logging**
+- **IORM (I/O Resource Manager)**: Gerenciamento de I/O entre bancos
+
+## 7.2 Configurações Típicas
+- RAC + ASM + Grid Infrastructure
+- Monitoramento via **Enterprise Manager** ou **dcli/cellcli**
+
+---
+
+# 📌 8. ASM (Automatic Storage Management)
+
+## 8.1 Conceito
+- Substitui volume managers do SO
+- Gerencia discos de forma automática
+
+## 8.2 Componentes
+- **Disk Groups**: AGRUPAM discos
+- **Redundância**: Normal, High, External
+
+## 8.3 Comandos
+```sql
+CREATE DISKGROUP data NORMAL REDUNDANCY
+  DISK '/dev/sdX1', '/dev/sdX2'
+  ATTRIBUTE 'compatible.asm' = '19.0';
 ```
 
 ---
 
-## 🛠️ Troubleshooting
+# 🌐 9. RAC (Real Application Clusters)
 
-| Sintoma | Diagnóstico | Ação Recomendada |
-|--------|-------------|------------------|
-| Alta Latência de I/O | `CellCLI` e `v$cell` | Verificar balanceamento, discos lentos |
-| Smart Scan não acionado | `v$sql_plan` | Verificar se query está elegível |
-| RAC intermitente | `crsctl`, `oswatcher` | Analisar interconnect |
+## 9.1 Objetivo
+- Alta disponibilidade e escalabilidade horizontal
+- Vários nós acessam a mesma base
 
----
-
-## 🔐 Backup e Recovery
-
-- Utilize **RMAN** com suporte a **Incremental Backup com Block Change Tracking**
-- **ZDLRA** (Zero Data Loss Recovery Appliance) é recomendado
-- Configure **Fast Recovery Area (FRA)** adequadamente
-
-Exemplo:
-```bash
-RMAN> BACKUP DATABASE PLUS ARCHIVELOG;
-```
+## 9.2 Componentes
+- **Clusterware**
+- **CRS** (Cluster Ready Services)
+- **SCAN Listener**
+- **Cache Fusion**: Compartilhamento de buffers entre nós
 
 ---
 
-## 🔒 Segurança e Compliance
+# ✨ 10. Boas Práticas Reforçadas
 
-- Habilite **TDE** para criptografia de dados em repouso
-- Use **Oracle Database Vault** para controle de acesso granular
-- Controle de acesso ao `CellCLI` e ao `dcli`
-- Configure Syslog e alertas SNMP para eventos críticos
+- Separar arquivos de dados, redo e backups em dispositivos diferentes
+- Monitorar uso de PGA/SGA com AWR
+- Utilizar RMAN com catalog e rotina automatizada
+- Controlar privilégios com roles e profiles restritos
+- Realizar testes de restore a cada trimestre
+- Atualizar patches críticos com OPatch
 
 ---
 
-## 🔗 Recursos Complementares
-
-- [Documentação Oficial Oracle Exadata](https://docs.oracle.com/en/engineered-systems/exadata-database-machine/index.html)
-- [Oracle Exadata Best Practices](https://www.oracle.com/technetwork/database/exadata/index.html)
-- [White Paper Oracle Exadata](https://www.oracle.com/technetwork/database/availability/exadata-wp-12c-1896116.pdf)
-- [Blog Oracle DBA – Exadata](https://blogs.oracle.com/database/tag/exadata)
+# 📚 Referências
+- Oracle Documentation: https://docs.oracle.com
+- Oracle Exadata Documentation: https://docs.oracle.com/en/engineered-systems/exadata/
+- Oracle LiveLabs: https://developer.oracle.com/livelabs
+- Livro "Oracle Database 19c Handbook" (Oracle Press)
+- Blog Oracle Base: https://oracle-base.com
+- Oracle Learning Library
 
 ---
